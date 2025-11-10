@@ -258,19 +258,12 @@ class MedicalApp(QMainWindow):
         info_title = QLabel("Информация для анализа")
         info_title.setStyleSheet("font-weight: bold; font-size: 18px; color: #2c5aa0;")
         
-        # Поля ввода информации
+        # Поля ввода информации (убрали выбор типа исследования)
         info_group = QGroupBox("Данные исследования")
         info_group.setStyleSheet("QGroupBox { font-weight: bold; color: #2c5aa0; }")
         group_layout = QVBoxLayout(info_group)
         
-        self.study_type = QComboBox()
-        self.study_type.addItems([
-            "Рентгенография верхних конечностей",
-            "Рентгенография нижних конечностей", 
-            "КТ конечностей",
-            "МРТ суставов",
-            "Обзорный снимок"
-        ])
+        # Убрали QComboBox для выбора типа исследования
         
         self.study_date = QDateEdit()
         self.study_date.setDate(QDate.currentDate())
@@ -280,8 +273,7 @@ class MedicalApp(QMainWindow):
         self.comments_input.setPlaceholderText("Дополнительные комментарии...")
         self.comments_input.setMaximumHeight(100)
         
-        group_layout.addWidget(QLabel("Тип исследования:"))
-        group_layout.addWidget(self.study_type)
+        # Убрали "Тип исследования:" и self.study_type
         group_layout.addWidget(QLabel("Дата исследования:"))
         group_layout.addWidget(self.study_date)
         group_layout.addWidget(QLabel("Комментарии:"))
@@ -396,6 +388,7 @@ class MedicalApp(QMainWindow):
         details_label.setStyleSheet("font-weight: bold; color: #2c5aa0; margin-top: 10px;")
         
         self.details_text = QTextBrowser()
+        self.details_text.setMinimumHeight(300)  # Увеличили высоту
         self.details_text.setStyleSheet("""
             QTextBrowser {
                 background-color: white;
@@ -587,12 +580,10 @@ class MedicalApp(QMainWindow):
         self.tab_widget.setCurrentIndex(2)  # Переходим на вкладку результатов
         
         # Обновляем информацию об исследовании
-        study_type = self.study_type.currentText()
         study_date = self.study_date.date().toString("dd.MM.yyyy")
         
         self.study_info_label.setText(
             f"<b>Пациент:</b> {self.current_patient['name']}<br>"
-            f"<b>Исследование:</b> {study_type}<br>"
             f"<b>Дата:</b> {study_date}<br>"
             f"<b>Диагноз:</b> {self.current_patient['diagnosis']}"
         )
@@ -657,40 +648,17 @@ class MedicalApp(QMainWindow):
     
     def generate_detailed_report(self, damage_type, confidence, has_damage):
         """Генерация детального отчета"""
+        location = random.choice(['Правая рука', 'Левая рука', 'Правая нога', 'Левая нога'])
+        
         if has_damage:
-            return f"""ЛОКАЛИЗАЦИЯ: {random.choice(['Правая рука', 'Левая рука', 'Правая нога', 'Левая нога'])}
+            return f"""ЛОКАЛИЗАЦИЯ: {location}
 ТИП ПОВРЕЖДЕНИЯ: {damage_type.upper()}
-УВЕРЕННОСТЬ АНАЛИЗА: {confidence}%
-
-ОПИСАНИЕ:
-- {self.get_damage_description(damage_type)}
-- Костная структура требует внимания специалиста
-- Рекомендовано дополнительное обследование
-
-РЕКОМЕНДАЦИИ:
-- {random.choice(['Консультация травматолога', 'КТ исследование для уточнения', 'МРТ мягких тканей'])}
-- Ограничение нагрузки на конечность
-- Контрольный осмотр через 7-10 дней
-
-КОММЕНТАРИИ ВРАЧА:
-{self.comments_input.toPlainText() or 'Комментарии отсутствуют'}"""
+УВЕРЕННОСТЬ АНАЛИЗА: {confidence}%"""
         else:
-            return f"""ЛОКАЛИЗАЦИЯ: {random.choice(['Правая рука', 'Левая рука', 'Правая нога', 'Левая нога'])}
+            # ВСЕГДА показываем только основную информацию без лишнего текста
+            return f"""ЛОКАЛИЗАЦИЯ: {location}
 ТИП ПОВРЕЖДЕНИЯ: ПАТОЛОГИЙ НЕ ОБНАРУЖЕНО
-УВЕРЕННОСТЬ АНАЛИЗА: {confidence}%
-
-ОПИСАНИЕ:
-- Костная структура не изменена
-- Суставные щели сохранены
-- Признаков остеопороза не выявлено
-- Контуры костей ровные, четкие
-
-РЕКОМЕНДАЦИИ:
-- Плановое наблюдение
-- Стандартные профилактические меры
-
-КОММЕНТАРИИ ВРАЧА:
-{self.comments_input.toPlainText() or 'Комментарии отсутствуют'}"""
+УВЕРЕННОСТЬ АНАЛИЗА: {confidence}%"""
     
     def get_damage_description(self, damage_type):
         """Описание повреждения"""
