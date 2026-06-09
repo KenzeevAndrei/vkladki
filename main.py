@@ -116,7 +116,7 @@ class MedicalApp(QMainWindow):
         self.current_image_path = None
         self.analysis_timer = None
 
-        self.model = keras.models.load_model(r'D:\vkladki\best_model.keras', compile=False)
+        self.model = keras.models.load_model(r'D:\project vitte\vkladki\best_model.keras', compile=False)
         self.init_ui()
         self.load_sample_patients()
         
