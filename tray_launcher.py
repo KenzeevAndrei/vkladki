@@ -62,3 +62,81 @@ def is_app_running():
     return app_process is not None and app_process.poll() is None
 
 
+def start_app(icon=None, item=None):
+    """
+    Запускает основную программу.
+    """
+    global app_process
+
+    if is_app_running():
+        if icon:
+            icon.notify("Приложение уже запущено", "bonscanAI")
+        return
+
+    if not APP_SCRIPT.exists():
+        if icon:
+            icon.notify(f"Не найден файл: {APP_SCRIPT}", "Ошибка")
+        return
+
+    creation_flags = CREATE_NO_WINDOW if os.name == "nt" else 0
+
+    app_process = subprocess.Popen(
+        [get_python_executable(), str(APP_SCRIPT)],
+        cwd=str(BASE_DIR),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=creation_flags,
+    )
+
+    if icon:
+        icon.notify("Приложение запущено", "bonscanAI")
+
+
+def stop_app(icon=None, item=None):
+    """
+    Останавливает запущенную программу.
+    """
+    global app_process
+
+    if is_app_running():
+        app_process.terminate()
+
+        try:
+            app_process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            app_process.kill()
+
+        app_process = None
+
+        if icon:
+            icon.notify("Приложение остановлено", "bonscanAI")
+
+
+def exit_tray(icon, item):
+    """
+    Закрывает трей-приложение.
+    """
+    stop_app()
+    icon.stop()
+
+
+def main():
+    menu = pystray.Menu(
+        Item("Запустить bonscanAI", start_app, default=True),
+        Item("Остановить bonscanAI", stop_app),
+        Item("Выход", exit_tray),
+    )
+
+    tray_icon = pystray.Icon(
+        name="bonscanAI",
+        icon=load_icon(),
+        title="bonscanAI",
+        menu=menu,
+    )
+
+    tray_icon.run()
+
+
+if __name__ == "__main__":
+    main()
