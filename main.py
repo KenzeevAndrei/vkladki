@@ -3,6 +3,8 @@ import os
 import random
 from tensorflow import keras
 import numpy as np
+from pathlib import Path
+from tensorflow import keras
 from PIL import Image
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -82,6 +84,7 @@ class PatientCard(QFrame):
         if self.parent:
             self.parent.select_patient(self.patient_data)
 
+
 class MedicalApp(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -116,10 +119,27 @@ class MedicalApp(QMainWindow):
         self.current_image_path = None
         self.analysis_timer = None
 
-        self.model = keras.models.load_model('best_model.keras', compile=False)
+        self.model = self.load_segmentation_model()
         self.init_ui()
         self.load_sample_patients()
-        
+    
+    def load_segmentation_model(self):
+        base_dir = Path(__file__).resolve().parent
+
+        possible_paths = [
+            base_dir / "unet_fracture_segmentation.keras",
+        ]
+
+        for model_path in possible_paths:
+            if model_path.exists():
+                print(f"Загружаю U-Net модель: {model_path}")
+                return keras.models.load_model(
+                    str(model_path),
+                    compile=False,
+                )
+
+        raise FileNotFoundError("U-Net модель не найдена")
+
     def init_ui(self):
         # Центральный виджет с вкладками
         self.tab_widget = QTabWidget()
@@ -433,7 +453,23 @@ class MedicalApp(QMainWindow):
 
         return tab
 
-    
+    def display_result_image(self, image_path):
+        pixmap = QPixmap(str(image_path))
+
+        if pixmap.isNull():
+            QMessageBox.warning(self, "Ошибка", f"Не удалось открыть изображение: {image_path}")
+            return
+
+        self.result_image.setPixmap(
+            pixmap.scaled(
+                self.result_image.size(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
+
+        self.result_image.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
     def load_sample_patients(self):
         """Загружаем тестовых пациентов"""
         self.patients = [
@@ -629,17 +665,74 @@ class MedicalApp(QMainWindow):
     def generate_analysis_results(self):
         if not self.current_image_path:
             return
+
         try:
-            img = Image.open(self.current_image_path).resize((224, 224)).convert('RGB')
-            img_array = np.array(img, dtype=np.float32) / 255.0
-            img_array = np.expand_dims(img_array, 0)
-            pred = self.model.predict(img_array, verbose=0)[0][0]
-            has_fracture = pred > 0.5
-            confidence = int(pred * 100 if has_fracture else (1 - pred) * 100)
+            # 1. Открываем исходное изображение
+            original_img = Image.open(self.current_image_path).convert("RGB")
+            original_size = original_img.size
+
+            # 2. U-Net обучалась на 256x256, поэтому подаём именно 256x256
+            img_resized = original_img.resize((256, 256))
+
+            img_array = np.array(img_resized, dtype=np.float32) / 255.0
+            img_array = np.expand_dims(img_array, axis=0)
+
+            # 3. Получаем маску, а не одно число
+            pred_mask = self.model.predict(img_array, verbose=0)[0]
+            pred_mask = np.squeeze(pred_mask)  # shape: 256x256
+
+            # 4. Превращаем вероятностную маску в бинарную
+            mask_threshold = 0.5
+            binary_mask = pred_mask >= mask_threshold
+
+            # 5. Считаем площадь найденной области
+            fracture_pixels = np.sum(binary_mask)
+            total_pixels = binary_mask.shape[0] * binary_mask.shape[1]
+            area_ratio = fracture_pixels / total_pixels
+
+            # 6. Минимальная площадь подозрительной области
+            # Можно подбирать: 0.001 = 0.1% изображения
+            min_area_ratio = 0.001
+
+            has_fracture = area_ratio >= min_area_ratio
+
+            # 7. Условная уверенность
+            # Для сегментации это не то же самое, что confidence классификатора
+            if has_fracture:
+                confidence = int(np.mean(pred_mask[binary_mask]) * 100)
+            else:
+                confidence = int((1.0 - np.max(pred_mask)) * 100)
+
+            confidence = max(0, min(confidence, 100))
+
+            # 8. Создаём маску в размере исходного изображения
+            mask_img = Image.fromarray((binary_mask.astype(np.uint8) * 255))
+            mask_img = mask_img.resize(original_size)
+
+            # 9. Создаём изображение с подсветкой
+            overlay_img = self.create_overlay(original_img, mask_img)
+
+            overlay_path = Path(__file__).resolve().parent / "result_overlay.png"
+            overlay_img.save(overlay_path)
+
+            # Сохраняем пути, чтобы дальше можно было показать результат в интерфейсе
+            self.last_mask_img = mask_img
+            self.last_overlay_path = str(overlay_path)
+
+            self.display_result_image(self.last_overlay_path)
+
+            # Для совместимости со старым кодом ниже
+            # Раньше pred был вероятностью, теперь pred — доля подсвеченной области
+            pred = area_ratio
+
         except Exception as e:
-            print(f"Ошибка предсказания: {e}")
-            has_fracture = False
-            confidence = 0
+            QMessageBox.critical(self, "Ошибка анализа", f"Не удалось выполнить анализ: {e}")
+            self.result_main_text.setText("Ошибка анализа")
+            self.result_description.setText("Результат недоступен")
+            return
+
+        # Ниже оставь свой старый код формирования текста результата,
+        # где используются has_fracture и confidence.
 
         if has_fracture:
             self.result_card.setStyleSheet("""
@@ -671,9 +764,23 @@ class MedicalApp(QMainWindow):
         details = self.generate_detailed_report(confidence, has_fracture)
         self.comments_text.setPlainText(details)  # было self.details_text
 
-    
+    def create_overlay(self, original_img, mask_img, alpha=0.45):
+        original = original_img.convert("RGB")
+        mask = mask_img.convert("L")
+
+        red_overlay = Image.new("RGB", original.size, (255, 0, 0))
+        highlighted = Image.blend(original, red_overlay, alpha)
+
+        result = Image.composite(
+            highlighted,
+            original,
+            mask,
+        )
+
+        return result
+
     def generate_detailed_report(self, confidence, has_fracture):
-        location = random.choice(['Правая рука', 'Левая рука', 'Правая нога', 'Левая нога'])
+        location = "ЛОКАЛИЗАЦИЯ: не определена текущей моделью"
         if has_fracture:
             status = "ПЕРЕЛОМ ОБНАРУЖЕН"
         else:

@@ -1,2 +1,7 @@
 .venv/
 .vscode/
+FracAtlas/
+dataset_seg/
+Dataset/
+/_pycache_/
+models/
