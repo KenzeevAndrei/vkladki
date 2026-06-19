@@ -6,6 +6,7 @@ import numpy as np
 from pathlib import Path
 from tensorflow import keras
 from PIL import Image
+from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QFrame, QProgressBar, QFileDialog,
@@ -127,18 +128,18 @@ class MedicalApp(QMainWindow):
         base_dir = Path(__file__).resolve().parent
 
         possible_paths = [
-            base_dir / "unet_fracture_segmentation.keras",
+            base_dir / "model.keras",
         ]
 
         for model_path in possible_paths:
             if model_path.exists():
-                print(f"Загружаю U-Net модель: {model_path}")
+                print(f"Загружаю модель: {model_path}")
                 return keras.models.load_model(
                     str(model_path),
                     compile=False,
                 )
 
-        raise FileNotFoundError("U-Net модель не найдена")
+        raise FileNotFoundError("Модель не найдена")
 
     def init_ui(self):
         # Центральный виджет с вкладками
@@ -671,10 +672,11 @@ class MedicalApp(QMainWindow):
             original_img = Image.open(self.current_image_path).convert("RGB")
             original_size = original_img.size
 
-            # 2. U-Net обучалась на 256x256, поэтому подаём именно 256x256
+            # 2. Модель обучалась на 256x256, поэтому подаём именно 256x256
             img_resized = original_img.resize((256, 256))
-
-            img_array = np.array(img_resized, dtype=np.float32) / 255.0
+            
+            img_array = np.array(img_resized, dtype=np.float32)
+            img_array = preprocess_input(img_array)
             img_array = np.expand_dims(img_array, axis=0)
 
             # 3. Получаем маску, а не одно число
