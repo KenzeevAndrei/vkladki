@@ -18,13 +18,16 @@ from PyQt6.QtCore import Qt, QTimer, QDate
 from PyQt6.QtGui import QPixmap, QFont, QIcon, QPainter, QColor
 from PyQt6.QtCore import QSize
 
+
 class PatientCard(QFrame):
+    # Создаём карточку одного пациента для списка на первой вкладке.
     def __init__(self, patient_data, parent=None):
         super().__init__(parent)
         self.patient_data = patient_data
         self.parent = parent
         self.setup_ui()
-        
+
+    # Тут просто собираем внешний вид карточки.
     def setup_ui(self):
         self.setStyleSheet("""
             PatientCard {
@@ -39,30 +42,28 @@ class PatientCard(QFrame):
             }
         """)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        
+
         layout = QVBoxLayout(self)
-        
-        # Основная информация
+
         name_label = QLabel(f"👤 {self.patient_data['name']}")
         name_label.setStyleSheet("font-weight: bold; font-size: 16px; color: #2c5aa0;")
-        
+
         info_layout = QHBoxLayout()
         info_layout.addWidget(QLabel(f"🎂 {self.patient_data['age']} лет"))
         info_layout.addWidget(QLabel(f"📋 №{self.patient_data['id']}"))
-        
+
         diagnosis_label = QLabel(f"📝 Диагноз: {self.patient_data['diagnosis']}")
         diagnosis_label.setStyleSheet("color: #666666; font-size: 12px;")
-        
+
         status_label = QLabel(f"📍 {self.patient_data['status']}")
         status_color = "#dc2626" if self.patient_data['status'] == "Требуется анализ" else "#16a34a"
         status_label.setStyleSheet(f"color: {status_color}; font-weight: bold;")
-        
+
         layout.addWidget(name_label)
         layout.addLayout(info_layout)
         layout.addWidget(diagnosis_label)
         layout.addWidget(status_label)
-        
-        # Кнопка выбора
+
         select_btn = QPushButton("Выбрать пациента")
         select_btn.setStyleSheet("""
             QPushButton {
@@ -78,15 +79,17 @@ class PatientCard(QFrame):
             }
         """)
         select_btn.clicked.connect(self.select_patient)
-        
+
         layout.addWidget(select_btn)
-        
+
+    # Когда нажимают кнопку, просто передаём выбранного пациента в главное окно.
     def select_patient(self):
         if self.parent:
             self.parent.select_patient(self.patient_data)
 
 
 class MedicalApp(QMainWindow):
+    # Тут поднимаем всё окно целиком и стартуем приложение.
     def __init__(self):
         super().__init__()
         self.setWindowTitle("МедАнализ - Система анализа рентгеновских снимков")
@@ -115,18 +118,20 @@ class MedicalApp(QMainWindow):
                 background-color: #93c5fd;
             }
         """)
-        
+
         self.current_patient = None
         self.current_image_path = None
         self.analysis_timer = None
+        self.last_mask_img = None
+        self.last_overlay_path = None
 
         self.model = self.load_segmentation_model()
         self.init_ui()
         self.load_sample_patients()
-    
+
+    # Пытаемся найти и загрузить модель рядом с файлом программы.
     def load_segmentation_model(self):
         base_dir = Path(__file__).resolve().parent
-
         possible_paths = [
             base_dir / "model.keras",
         ]
@@ -141,28 +146,24 @@ class MedicalApp(QMainWindow):
 
         raise FileNotFoundError("Модель не найдена")
 
+    # Здесь создаём вкладки и подключаем их к главному окну.
     def init_ui(self):
-        # Центральный виджет с вкладками
         self.tab_widget = QTabWidget()
         self.setCentralWidget(self.tab_widget)
-        
-        # Вкладка 1: Список пациентов
+
         self.patients_tab = self.create_patients_tab()
         self.tab_widget.addTab(self.patients_tab, "👥 Список пациентов")
-        
-        # Вкладка 2: Анализ снимка
+
         self.analysis_tab = self.create_analysis_tab()
         self.tab_widget.addTab(self.analysis_tab, "📋 Карточка пациента")
 
-        
-        # Вкладка 3: Результаты
         self.results_tab = self.create_results_tab()
         self.tab_widget.addTab(self.results_tab, "📊 Результаты анализа")
-        
-        # Изначально блокируем вкладки анализа и результатов
+
         self.tab_widget.setTabEnabled(1, False)
         self.tab_widget.setTabEnabled(2, False)
-        
+
+    # Первая вкладка: список пациентов, поиск и фильтр.
     def create_patients_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
@@ -174,7 +175,6 @@ class MedicalApp(QMainWindow):
         filter_frame = QFrame()
         filter_layout = QHBoxLayout(filter_frame)
 
-        # делаем атрибутами
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("🔍 Поиск пациентов...")
         self.search_input.setStyleSheet("padding: 8px; border: 1px solid #e2e8f0; border-radius: 5px;")
@@ -183,7 +183,6 @@ class MedicalApp(QMainWindow):
         self.status_filter.addItems(["Все статусы", "Требуется анализ", "Анализ завершен", "Новые снимки"])
         self.status_filter.setStyleSheet("padding: 8px; border: 1px solid #e2e8f0; border-radius: 5px;")
 
-        # сигналы на обновление списка
         self.search_input.textChanged.connect(self.display_patients)
         self.status_filter.currentIndexChanged.connect(self.display_patients)
 
@@ -205,12 +204,11 @@ class MedicalApp(QMainWindow):
 
         return tab
 
-        
+    # Вторая вкладка: загрузка снимка и запуск анализа.
     def create_analysis_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        
-        # Информация о выбранном пациенте
+
         self.patient_info_frame = QFrame()
         self.patient_info_frame.setStyleSheet("""
             QFrame {
@@ -221,33 +219,25 @@ class MedicalApp(QMainWindow):
             }
         """)
         patient_info_layout = QHBoxLayout(self.patient_info_frame)
-        
+
         self.patient_avatar = QLabel("👤")
         self.patient_avatar.setStyleSheet("font-size: 40px;")
-        
+
         self.patient_details = QLabel("Пациент не выбран")
         self.patient_details.setStyleSheet("font-size: 14px; color: #333333;")
-        
+
         patient_info_layout.addWidget(self.patient_avatar)
         patient_info_layout.addWidget(self.patient_details)
         patient_info_layout.addStretch()
-        
-        # Основная область анализа
+
         analysis_layout = QHBoxLayout()
-        
-        # Левая часть - загрузка снимков
+
         left_frame = QFrame()
         left_frame.setStyleSheet("QFrame { background-color: white; border-radius: 10px; }")
         left_layout = QVBoxLayout(left_frame)
-        
+
         upload_title = QLabel("Рентгеновские снимки пациента")
-        # можно оставить или поменять по желанию
 
-        gallery_label = QLabel("История анализов:")
-        gallery_label.setStyleSheet("font-weight: bold; color: #2c5aa0; margin-top: 10px;")
-
-        
-        # Область загрузки
         self.upload_area = QLabel()
         self.upload_area.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.upload_area.setMinimumHeight(300)
@@ -261,85 +251,77 @@ class MedicalApp(QMainWindow):
             }
         """)
         self.upload_area.setText("Снимок не загружен\n\nНажмите 'Загрузить снимок' или перетащите файл")
-        
-        # Кнопки загрузки
+
         upload_btn = QPushButton("📁 Загрузить снимок")
         upload_btn.clicked.connect(self.upload_image)
         upload_btn.setStyleSheet("padding: 12px; font-size: 14px;")
-        
-        # Галлерея существующих снимков
+
         gallery_label = QLabel("История снимков:")
         gallery_label.setStyleSheet("font-weight: bold; color: #2c5aa0; margin-top: 10px;")
-        
+
         self.gallery_list = QListWidget()
         self.gallery_list.setStyleSheet("border: 1px solid #e2e8f0; border-radius: 5px;")
-        
+
         left_layout.addWidget(upload_title)
         left_layout.addWidget(self.upload_area)
         left_layout.addWidget(upload_btn)
         left_layout.addWidget(gallery_label)
         left_layout.addWidget(self.gallery_list)
-        
-        # Правая часть - информация и управление
+
         right_frame = QFrame()
         right_frame.setStyleSheet("QFrame { background-color: white; border-radius: 10px; }")
         right_layout = QVBoxLayout(right_frame)
-        
+
         info_title = QLabel("Информация для анализа")
         info_title.setStyleSheet("font-weight: bold; font-size: 18px; color: #2c5aa0;")
-        
-        # Поля ввода информации (убрали выбор типа исследования)
+
         info_group = QGroupBox("Данные исследования")
         info_group.setStyleSheet("QGroupBox { font-weight: bold; color: #2c5aa0; }")
         group_layout = QVBoxLayout(info_group)
-        
-        # Убрали QComboBox для выбора типа исследования
-        
+
         self.study_date = QDateEdit()
         self.study_date.setDate(QDate.currentDate())
         self.study_date.setCalendarPopup(True)
-        
+
         self.comments_input = QTextEdit()
         self.comments_input.setPlaceholderText("Дополнительные комментарии...")
         self.comments_input.setMaximumHeight(100)
-        
-        # Убрали "Тип исследования:" и self.study_type
+
         group_layout.addWidget(QLabel("Дата исследования:"))
         group_layout.addWidget(self.study_date)
         group_layout.addWidget(QLabel("Комментарии:"))
         group_layout.addWidget(self.comments_input)
-        
-        # Прогресс бар
+
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
-        
+
         self.status_label = QLabel("")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.status_label.setStyleSheet("color: #666666; font-style: italic;")
-        
-        # Кнопка анализа
+
         self.analyze_btn = QPushButton("🔍 Начать анализ снимка")
         self.analyze_btn.clicked.connect(self.start_analysis)
         self.analyze_btn.setStyleSheet("padding: 15px; font-size: 16px; font-weight: bold;")
         self.analyze_btn.setEnabled(False)
-        
+
         right_layout.addWidget(info_title)
         right_layout.addWidget(info_group)
         right_layout.addWidget(self.progress_bar)
         right_layout.addWidget(self.status_label)
         right_layout.addWidget(self.analyze_btn)
         right_layout.addStretch()
-        
+
         analysis_layout.addWidget(left_frame)
         analysis_layout.addWidget(right_frame)
         analysis_layout.setStretchFactor(left_frame, 2)
         analysis_layout.setStretchFactor(right_frame, 1)
-        
+
         layout.addWidget(self.patient_info_frame)
         layout.addLayout(analysis_layout)
-        
+
         return tab
-        
+
+    # Третья вкладка: тут показываем итог и поле для комментария врача.
     def create_results_tab(self):
         tab = QWidget()
         layout = QVBoxLayout(tab)
@@ -358,7 +340,6 @@ class MedicalApp(QMainWindow):
 
         results_layout = QHBoxLayout()
 
-        # Левая часть - снимок
         left_frame = QFrame()
         left_layout = QVBoxLayout(left_frame)
 
@@ -374,14 +355,12 @@ class MedicalApp(QMainWindow):
         left_layout.addWidget(image_label)
         left_layout.addWidget(self.result_image)
 
-        # Правая часть - заключение
         right_frame = QFrame()
         right_layout = QVBoxLayout(right_frame)
 
         conclusion_label = QLabel("Медицинское заключение")
         conclusion_label.setStyleSheet("font-weight: bold; color: #2c5aa0;")
 
-        # Карточка результата
         self.result_card = QFrame()
         self.result_card.setStyleSheet("""
             QFrame {
@@ -409,7 +388,6 @@ class MedicalApp(QMainWindow):
         result_layout.addWidget(self.result_icon)
         result_layout.addLayout(result_text_layout)
 
-        # Комментарии
         comments_label = QLabel("Комментарии к анализу:")
         comments_label.setStyleSheet("font-weight: bold; color: #2c5aa0; margin-top: 10px;")
 
@@ -426,8 +404,8 @@ class MedicalApp(QMainWindow):
             }
         """)
 
-        # Кнопки
         actions_layout = QHBoxLayout()
+
         self.save_btn = QPushButton("💾 Сохранить заключение")
         self.save_btn.setStyleSheet("padding: 10px;")
         self.save_btn.clicked.connect(self.save_report)
@@ -454,6 +432,7 @@ class MedicalApp(QMainWindow):
 
         return tab
 
+    # Показываем итоговую картинку на третьей вкладке.
     def display_result_image(self, image_path):
         pixmap = QPixmap(str(image_path))
 
@@ -468,11 +447,10 @@ class MedicalApp(QMainWindow):
                 Qt.TransformationMode.SmoothTransformation,
             )
         )
-
         self.result_image.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
+    # Подкидываем тестовых пациентов, чтобы интерфейс не был пустым.
     def load_sample_patients(self):
-        """Загружаем тестовых пациентов"""
         self.patients = [
             {
                 'id': '001', 'name': 'Иванов Алексей Петрович', 'age': 45,
@@ -499,19 +477,16 @@ class MedicalApp(QMainWindow):
                 'diagnosis': 'Посттравматическая деформация плечевой кости', 'status': 'Требуется анализ'
             }
         ]
-        
         self.display_patients()
-    
+
+    # Обновляем список пациентов с учётом поиска и фильтра.
     def display_patients(self):
-        
-        # очищаем layout
         for i in reversed(range(self.patients_grid.count())):
             item = self.patients_grid.itemAt(i)
             w = item.widget()
             if w:
                 w.setParent(None)
 
-        # фильтрация
         search_text = self.search_input.text().strip().lower() if hasattr(self, "search_input") else ""
         status_selected = self.status_filter.currentText() if hasattr(self, "status_filter") else "Все статусы"
 
@@ -532,9 +507,9 @@ class MedicalApp(QMainWindow):
             if col > 1:
                 col = 0
                 row += 1
-    
+
+    # Когда выбрали пациента, открываем его карточку и сбрасываем старый снимок.
     def select_patient(self, patient_data):
-        
         self.current_patient = patient_data
 
         self.patient_details.setText(
@@ -544,7 +519,6 @@ class MedicalApp(QMainWindow):
             f"Статус: {patient_data['status']}"
         )
 
-        # сброс загруженного снимка
         self.current_image_path = None
         self.upload_area.clear()
         self.upload_area.setText(
@@ -557,64 +531,61 @@ class MedicalApp(QMainWindow):
 
         self.update_patient_gallery()
 
-    
+    # Обновляем список прошлых снимков пациента.
     def update_patient_gallery(self):
-        """Обновляем галлерею снимков пациента"""
         self.gallery_list.clear()
-        # Здесь можно добавить загрузку реальных снимков из базы данных
         sample_images = ["Рентген правой руки (12.01.2024)", "КТ левого колена (05.01.2024)"]
         for image in sample_images:
             self.gallery_list.addItem(image)
-    
+
+    # Открываем окно выбора файла и подгружаем снимок в интерфейс.
     def upload_image(self):
-        """Загрузка нового снимка"""
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Выберите рентгеновский снимок",
             "",
             "Image Files (*.png *.jpg *.jpeg *.bmp);;All Files (*)"
         )
-        
+
         if file_path:
             self.current_image_path = file_path
             pixmap = QPixmap(file_path)
-            
+
             if not pixmap.isNull():
-                scaled_pixmap = pixmap.scaled(400, 300, Qt.AspectRatioMode.KeepAspectRatio, 
-                                            Qt.TransformationMode.SmoothTransformation)
+                scaled_pixmap = pixmap.scaled(
+                    400, 300,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation
+                )
                 self.upload_area.setPixmap(scaled_pixmap)
                 self.analyze_btn.setEnabled(True)
-                
-                # Добавляем в галлерею
+
                 filename = os.path.basename(file_path)
                 self.gallery_list.addItem(f"Новый снимок: {filename}")
             else:
                 QMessageBox.warning(self, "Ошибка", "Не удалось загрузить изображение")
-    
+
+    # Стартуем фейковый прогресс анализа перед показом результата.
     def start_analysis(self):
-        """Начало анализа снимка"""
         if not self.current_image_path or not self.current_patient:
             return
-            
+
         self.progress_bar.setVisible(True)
         self.analyze_btn.setEnabled(False)
         self.status_label.setText("Подготовка к анализу...")
-        
-        # Имитация процесса анализа
         self.progress_bar.setValue(0)
-        
+
         if self.analysis_timer and self.analysis_timer.isActive():
             self.analysis_timer.stop()
-            
+
         self.analysis_timer = QTimer()
         self.analysis_timer.timeout.connect(self.update_progress)
         self.analysis_timer.start(150)
-    
+
+    # Плавно двигаем прогрессбар и меняем подписи статуса.
     def update_progress(self):
-        """Обновление прогресса анализа"""
         current_value = self.progress_bar.value()
-        
-        # Обновляем статус
+
         if current_value < 25:
             self.status_label.setText("Загрузка изображения...")
             increment = random.randint(5, 10)
@@ -627,9 +598,9 @@ class MedicalApp(QMainWindow):
         else:
             self.status_label.setText("Формирование заключения...")
             increment = random.randint(1, 4)
-        
+
         new_value = current_value + increment
-        
+
         if new_value >= 100:
             self.progress_bar.setValue(100)
             self.analysis_timer.stop()
@@ -637,14 +608,14 @@ class MedicalApp(QMainWindow):
             QTimer.singleShot(500, self.show_results)
         else:
             self.progress_bar.setValue(new_value)
-    
+
+    # После анализа переключаемся на вкладку с результатом.
     def show_results(self):
         self.tab_widget.setTabEnabled(2, True)
         self.tab_widget.setCurrentIndex(2)
 
         study_date = self.study_date.date().toString("dd.MM.yyyy")
 
-        # без диагноза
         self.study_info_label.setText(
             f"<b>Пациент:</b> {self.current_patient['name']}<br>"
             f"<b>Дата:</b> {study_date}"
@@ -660,91 +631,70 @@ class MedicalApp(QMainWindow):
             self.result_image.setPixmap(scaled_pixmap)
 
         self.generate_analysis_results()
-        self.comments_text.setPlainText("")  # очищаем комментарии при новом результате
 
-    
+    # Здесь идёт сам анализ: прогон через модель, маска и итоговый вывод.
     def generate_analysis_results(self):
         if not self.current_image_path:
             return
 
         try:
-            # 1. Открываем исходное изображение
             original_img = Image.open(self.current_image_path).convert("RGB")
             original_size = original_img.size
 
-            # 2. Модель обучалась на 256x256, поэтому подаём именно 256x256
             img_resized = original_img.resize((256, 256))
-            
             img_array = np.array(img_resized, dtype=np.float32)
             img_array = preprocess_input(img_array)
             img_array = np.expand_dims(img_array, axis=0)
 
-            # 3. Получаем маску, а не одно число
             pred_mask = self.model.predict(img_array, verbose=0)[0]
-            pred_mask = np.squeeze(pred_mask)  # shape: 256x256
+            pred_mask = np.squeeze(pred_mask)
 
-            # 4. Превращаем вероятностную маску в бинарную
             mask_threshold = 0.5
             binary_mask = pred_mask >= mask_threshold
 
-            # 5. Считаем площадь найденной области
             fracture_pixels = np.sum(binary_mask)
             total_pixels = binary_mask.shape[0] * binary_mask.shape[1]
             area_ratio = fracture_pixels / total_pixels
 
-            # 6. Минимальная площадь подозрительной области
-            # Можно подбирать: 0.001 = 0.1% изображения
             min_area_ratio = 0.001
-
             has_fracture = area_ratio >= min_area_ratio
 
-            # 7. Условная уверенность
-            # Для сегментации это не то же самое, что confidence классификатора
-            if has_fracture:
+            if has_fracture and np.any(binary_mask):
                 confidence = int(np.mean(pred_mask[binary_mask]) * 100)
             else:
                 confidence = int((1.0 - np.max(pred_mask)) * 100)
 
             confidence = max(0, min(confidence, 100))
 
-            # 8. Создаём маску в размере исходного изображения
             mask_img = Image.fromarray((binary_mask.astype(np.uint8) * 255))
             mask_img = mask_img.resize(original_size)
 
-            # 9. Создаём изображение с подсветкой
             overlay_img = self.create_overlay(original_img, mask_img)
 
             overlay_path = Path(__file__).resolve().parent / "result_overlay.png"
             overlay_img.save(overlay_path)
 
-            # Сохраняем пути, чтобы дальше можно было показать результат в интерфейсе
             self.last_mask_img = mask_img
             self.last_overlay_path = str(overlay_path)
 
             self.display_result_image(self.last_overlay_path)
 
-            # Для совместимости со старым кодом ниже
-            # Раньше pred был вероятностью, теперь pred — доля подсвеченной области
-            pred = area_ratio
-
         except Exception as e:
             QMessageBox.critical(self, "Ошибка анализа", f"Не удалось выполнить анализ: {e}")
             self.result_main_text.setText("Ошибка анализа")
             self.result_description.setText("Результат недоступен")
+            self.comments_text.setPlainText("")
             return
-
-        # Ниже оставь свой старый код формирования текста результата,
-        # где используются has_fracture и confidence.
 
         if has_fracture:
             self.result_card.setStyleSheet("""
-            QFrame {
-                background-color: #fef2f2;
-                border: 2px solid #fecaca;
-                border-radius: 8px;
-                padding: 15px;
-                    }
-                """)
+                QFrame {
+                    background-color: #fef2f2;
+                    border: 2px solid #fecaca;
+                    border-radius: 8px;
+                    padding: 15px;
+                }
+            """)
             self.result_icon.setText("⚠️")
             self.result_main_text.setText("Обнаружен перелом")
             self.result_main_text.setStyleSheet("font-weight: bold; font-size: 18px; color: #dc2626;")
@@ -763,9 +713,10 @@ class MedicalApp(QMainWindow):
             self.result_main_text.setStyleSheet("font-weight: bold; font-size: 18px; color: #16a34a;")
             self.result_description.setText("Явных признаков перелома не выявлено")
 
-        details = self.generate_detailed_report(confidence, has_fracture)
-        self.comments_text.setPlainText(details)  # было self.details_text
+        self.comments_text.clear()
+        self.comments_text.setPlaceholderText("Введите комментарий врача...")
 
+    # Накладываем красную подсветку на места, где модель нашла подозрительную область.
     def create_overlay(self, original_img, mask_img, alpha=0.45):
         original = original_img.convert("RGB")
         mask = mask_img.convert("L")
@@ -781,29 +732,7 @@ class MedicalApp(QMainWindow):
 
         return result
 
-    def generate_detailed_report(self, confidence, has_fracture):
-        location = "ЛОКАЛИЗАЦИЯ: не определена текущей моделью"
-        if has_fracture:
-            status = "ПЕРЕЛОМ ОБНАРУЖЕН"
-        else:
-            status = "ПЕРЕЛОМОВ НЕ ОБНАРУЖЕНО"
-        return f"""ЛОКАЛИЗАЦИЯ: {location}
-    СТАТУС: {status}
-    УВЕРЕННОСТЬ АНАЛИЗА: {confidence}%"""
-
-    
-    def get_damage_description(self, damage_type):
-        """Описание повреждения"""
-        descriptions = {
-            "перелом лучевой кости": "Линия перелома видна в средней трети диафиза, смещение фрагментов минимальное",
-            "трещина большеберцовой кости": "Линейный дефект кортикального слоя без смещения отломков",
-            "вывих плечевого сустава": "Нарушение конгруэнтности суставных поверхностей, головка плеча смещена",
-            "остеофиты коленного сустава": "Краевые костные разрастания в области суставных поверхностей",
-            "признаки остеопороза": "Снижение плотности костной ткани, истончение кортикального слоя",
-            "артроз тазобедренного сустава": "Сужение суставной щели, субхондральный остеосклероз"
-        }
-        return descriptions.get(damage_type, "Обнаружены изменения костной структуры, требующие уточнения")
-    
+    # Сохраняем текстовое заключение вместе с комментарием врача.
     def save_report(self):
         if self.current_patient:
             file_path, _ = QFileDialog.getSaveFileName(
@@ -826,7 +755,7 @@ class MedicalApp(QMainWindow):
                 except Exception as e:
                     QMessageBox.warning(self, "Ошибка", f"Не удалось сохранить заключение: {str(e)}")
 
-    
+    # Сбрасываем состояние, чтобы можно было начать новый анализ заново.
     def new_analysis(self):
         self.tab_widget.setCurrentIndex(1)
         self.progress_bar.setValue(0)
@@ -834,21 +763,26 @@ class MedicalApp(QMainWindow):
         self.status_label.setText("")
         self.analyze_btn.setEnabled(False)
         self.comments_input.clear()
-        self.comments_text.clear() 
+        self.comments_text.clear()
         self.current_image_path = None
+        self.last_mask_img = None
+        self.last_overlay_path = None
         self.upload_area.clear()
         self.upload_area.setText(
             "Снимок не загружен\n\nНажмите 'Загрузить снимок' или перетащите файл"
         )
+        self.result_image.clear()
+        self.result_image.setText("Снимок не загружен")
 
 
-
+# Точка входа: отсюда приложение запускается.
 def main():
     app = QApplication(sys.argv)
     app.setStyle('Fusion')
     window = MedicalApp()
     window.show()
     sys.exit(app.exec())
+
 
 if __name__ == '__main__':
     main()
