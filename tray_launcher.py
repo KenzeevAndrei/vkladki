@@ -18,15 +18,11 @@ app_process = None
 
 CREATE_NO_WINDOW = 0x08000000
 
-
+# Ищет Python из виртуального окружения
 def get_python_executable():
-    """
-    Ищет Python из виртуального окружения.
-    Лучше использовать pythonw.exe, чтобы не открывалась консоль.
-    """
+   
     candidates = [
         BASE_DIR / ".venv" / "Scripts" / "pythonw.exe",
-        BASE_DIR / ".venv" / "Scripts" / "python.exe",
         Path(sys.executable).with_name("pythonw.exe"),
         Path(sys.executable),
     ]
@@ -37,11 +33,9 @@ def get_python_executable():
 
     return "python"
 
-
+# Создаёт простую иконку, если app_icon.ico не найден
 def create_default_icon():
-    """
-    Создаёт простую иконку, если app_icon.ico не найден.
-    """
+    
     image = Image.new("RGBA", (64, 64), (30, 90, 200, 255))
     draw = ImageDraw.Draw(image)
 
@@ -61,11 +55,9 @@ def load_icon():
 def is_app_running():
     return app_process is not None and app_process.poll() is None
 
-
+# Запускает основную программу
 def start_app(icon=None, item=None):
-    """
-    Запускает основную программу.
-    """
+    
     global app_process
 
     if is_app_running():
@@ -92,11 +84,9 @@ def start_app(icon=None, item=None):
     if icon:
         icon.notify("Приложение запущено", "bonscanAI")
 
-
+# Останавливает запущенную программу
 def stop_app(icon=None, item=None):
-    """
-    Останавливает запущенную программу.
-    """
+    
     global app_process
 
     if is_app_running():
@@ -112,11 +102,9 @@ def stop_app(icon=None, item=None):
         if icon:
             icon.notify("Приложение остановлено", "bonscanAI")
 
-
+# Закрывает трей-приложение
 def exit_tray(icon, item):
-    """
-    Закрывает трей-приложение.
-    """
+    
     stop_app()
     icon.stop()
 
@@ -136,7 +124,6 @@ def main():
     )
 
     tray_icon.run()
-
 
 if __name__ == "__main__":
     main()
